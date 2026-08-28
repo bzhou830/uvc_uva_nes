@@ -1,0 +1,23 @@
+CONFIG_FREERTOS =y
+CONFIG_SHELL =y
+
+# On-chip PSRAM (4 MB on bl616dk). Required because InfoNES needs far more
+# than the ~414 KB of internal SRAM; the large emulator buffers are placed
+# in PSRAM via the NES_PSRAM_BSS macro (see InfoNES.h).
+CONFIG_PSRAM =y
+
+CONFIG_CHERRYUSB =y
+CONFIG_CHERRYUSB_OSAL =freertos
+
+# USB Device mode with Video (UVC) + Audio (UAC) + HID classes enabled.
+# HID is used as a host->device "NES pad" input channel (interrupt OUT EP 0x03).
+CONFIG_CHERRYUSB_DEVICE =y
+CONFIG_CHERRYUSB_DEVICE_VIDEO =y
+CONFIG_CHERRYUSB_DEVICE_AUDIO =y
+CONFIG_CHERRYUSB_DEVICE_HID =y
+
+# Temporarily disable the BFLB coredump base64 memory dump so the serial
+# log stays readable during bring-up. Re-enable (CONFIG_COREDUMP =y) once
+# the crash is root-caused. The exception handler guards the call site
+# with #ifdef CONFIG_COREDUMP, so disabling is link-safe.
+CONFIG_COREDUMP =n

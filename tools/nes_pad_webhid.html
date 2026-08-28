@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>BL616 NES Pad (WebHID)</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 2rem; }
+  button { font-size: 1rem; padding: .5rem 1rem; margin: .25rem; }
+  #log { white-space: pre-wrap; background: #111; color: #0f0; padding: 1rem; height: 160px; overflow: auto; }
+  .pad { display: grid; grid-template-columns: repeat(3, 60px); gap: 6px; margin-top: 1rem; }
+  .pad button { height: 56px; }
+  .on { background: #4caf50; color: #fff; }
+</style>
+</head>
+<body>
+<h2>BL616 NES 手柄转发 (WebHID)</h2>
+<p>用 Chrome 打开本页（需通过 http://localhost 或 https 提供安全上下文，file:// 不可用 WebHID）。
+   点“连接设备”，选 VID/PID=ABCD/1234 的 HID，然后用键盘或手柄操作。</p>
+<button id="connect">连接设备</button>
+<button id="disconnect">断开</button>
+<div id="log">日志：</div>
+
+<div class="pad">
+  <span></span><button data-bit="16">↑</button><span></span>
+  <button data-bit="64">←</button><span></span><button data-bit="128">→</button>
+  <span></span><button data-bit="32">↓</button><span></span>
+  <button data-bit="4">Sel</button><button data-bit="8">Sta</button><span></span>
+  <button data-bit="1">A</button><span></span><button data-bit="2">B</button>
+</div>
+
+<script>
+const VID = 0xABCD, PID = 0x1234, REPORT_ID = 1;
+let device = null;
+const log = (m) => { document.getElementById('log').textContent += '\n' + m; };
+
+function sendPad(pad) {
+  if (!device) return;
+  // Out 端点 / sendReport：首字节为 report id，次字节为 NES 位
+  device.sendReport(REPORT_ID, new Uint8Array([pad])).catch(e => log('发送失败: ' + e));
+}
+
+// 键盘
+const down = new Set();
+addEventListener('keydown', e => {
+  const map = {ArrowUp:16,ArrowDown:32,ArrowLeft:64,ArrowRight:128,
+               w:16,s:32,a:64,d:128,j:1,k:2,u:4,i:8,Enter:8};
+  if (e.key in map) { down.add(map[e.key]); e.preventDefault(); pushPad(); }
+});
+addEventListener('keyup', e => {
+  const map = {ArrowUp:16,ArrowDown:32,ArrowLeft:64,ArrowRight:128,
+               w:16,s:32,a:64,d:128,j:1,k:2,u:4,i:8,Enter:8};
+  if (e.key in map) { down.delete(map[e.key]); pushPad(); }
+});
+
+// 屏幕按钮（按下/松开）
+document.querySelectorAll('.pad button').forEach(btn => {
+  const bit = +btn.dataset.bit;
+  btn.addEventListener('pointerdown', () => { down.add(bit); btn.classList.add('on'); pushPad(); });
+  btn.addEventListener('pointerup',   () => { down.delete(bit); btn.classList.remove('on'); pushPad(); });
+  btn.addEventListener('pointerleave',() => { down.delete(bit); btn.classList.remove('on'); pushPad(); });
+});
+
+function pushPad() {
+  let p = 0; for (const b of down) p |= b; sendPad(p);
+}
+
+// 手柄（Gamepad API）
+let lastPad = 0;
+function pollGamepad() {
+  const gp = navigator.getGamepads ? navigator.getGamepads()[0] : null;
+  if (gp) {
+    let p = 0;
+    const ax = gp.axes, h = gp.buttons;
+    if (ax[0] < -0.5) p |= 64; if (ax[0] > 0.5) p |= 128;
+    if (ax[1] < -0.5) p |= 16; if (ax[1] > 0.5) p |= 32;
+    if (h[0] && h[0].pressed) p |= 1;   // A
+    if (h[1] && h[1].pressed) p |= 2;   // B
+    if (h[6] && h[6].pressed) p |= 4;   // Back/Select
+    if (h[7] && h[7].pressed) p |= 8;   // Start
+    if (p !== lastPad) { sendPad(p); lastPad = p; }
+  }
+  requestAnimationFrame(pollGamepad);
+}
+requestAnimationFrame(pollGamepad);
+
+document.getElementById('connect').onclick = async () => {
+  try {
+    const devs = await navigator.hid.requestDevice({ filters: [{ vendorId: VID, productId: PID }] });
+    device = devs[0];
+    await device.open();
+    log('已连接: ' + device.productName);
+  } catch (e) { log('连接失败: ' + e); }
+};
+document.getElementById('disconnect').onclick = async () => {
+  if (device) { await device.close(); device = null; log('已断开'); }
+};
+</script>
+</body>
+</html>

@@ -1,0 +1,102 @@
+<svg viewBox="0 0 680 552" width="100%" role="img" xmlns="http://www.w3.org/2000/svg">
+  <title>BL616 UVC+UAC+HID 复合设备系统架构与数据流</title>
+  <desc>板子侧 NES 模拟与硬件 MJPEG 编码、音频混音、USB 三通道与 PC 主机交互的数据流；含双 RTOS 任务与 jpeg_state 单缓冲门控。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </marker>
+  </defs>
+
+  <!-- 外框 -->
+  <rect x="20" y="28" width="300" height="470" rx="18" fill="none" stroke="#B8BCC2" stroke-width="1"/>
+  <rect x="420" y="28" width="240" height="470" rx="18" fill="none" stroke="#B8BCC2" stroke-width="1"/>
+
+  <!-- 标题（左上） -->
+  <text x="40" y="48" font-family="system-ui,sans-serif" font-size="14" font-weight="500" fill="#1F2933">BL616 (bl616dk)</text>
+  <text x="40" y="66" font-family="system-ui,sans-serif" font-size="12" fill="#5F6368">USB Device · 单核 RTOS</text>
+  <!-- 标题（右上） -->
+  <text x="440" y="48" font-family="system-ui,sans-serif" font-size="14" font-weight="500" fill="#1F2933">PC 主机</text>
+  <text x="440" y="66" font-family="system-ui,sans-serif" font-size="12" fill="#5F6368">相机 / 录音 / 输入</text>
+
+  <!-- NES ROM -->
+  <rect x="44" y="82" width="252" height="40" rx="8" fill="#FAEEDA" stroke="#854F0B" stroke-width="0.5"/>
+  <text x="170" y="99" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#1F2933">NES ROM</text>
+  <text x="170" y="116" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#5F6368">flash @0x100000</text>
+
+  <!-- InfoNES 核心 -->
+  <rect x="44" y="128" width="252" height="42" rx="8" fill="#EDEBFE" stroke="#534AB7" stroke-width="0.5"/>
+  <text x="170" y="145" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#1F2933">InfoNES 核心</text>
+  <text x="170" y="163" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#5F6368">K6502 · PPU · APU</text>
+
+  <!-- PPU / APU -->
+  <rect x="44" y="182" width="120" height="38" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+  <text x="104" y="199" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#1F2933">PPU</text>
+  <text x="104" y="216" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#5F6368">256×240 RGB565</text>
+
+  <rect x="176" y="182" width="120" height="38" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+  <text x="236" y="199" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#1F2933">APU</text>
+  <text x="236" y="216" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#5F6368">5 路波形</text>
+
+  <!-- hw_mjpeg / 混音 -->
+  <rect x="44" y="228" width="120" height="38" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+  <text x="104" y="245" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#1F2933">hw_mjpeg 编码</text>
+  <text x="104" y="262" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#5F6368">RGB565→YUYV 2×</text>
+
+  <rect x="176" y="228" width="120" height="38" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+  <text x="236" y="245" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#1F2933">混音</text>
+  <text x="236" y="262" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#5F6368">环形缓冲</text>
+
+  <!-- jpeg_buf -->
+  <rect x="44" y="274" width="120" height="38" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+  <text x="104" y="291" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#1F2933">jpeg_buf</text>
+  <text x="104" y="308" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#5F6368">jpeg_state 门控</text>
+
+  <!-- 端点框（板子侧） -->
+  <rect x="44" y="378" width="78" height="36" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+  <text x="83" y="394" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#1F2933">UVC 0x81</text>
+  <text x="83" y="410" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#5F6368">视频 IN</text>
+
+  <rect x="130" y="378" width="78" height="36" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+  <text x="169" y="394" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#1F2933">UAC 0x82</text>
+  <text x="169" y="410" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#5F6368">音频 IN</text>
+
+  <rect x="214" y="378" width="78" height="36" rx="8" fill="#EDEBFE" stroke="#534AB7" stroke-width="0.5"/>
+  <text x="253" y="394" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#1F2933">HID 0x03</text>
+  <text x="253" y="410" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#5F6368">按键 OUT</text>
+
+  <!-- PC 侧框 -->
+  <rect x="436" y="166" width="216" height="46" rx="8" fill="#E6F1FB" stroke="#185FA5" stroke-width="0.5"/>
+  <text x="544" y="185" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#1F2933">相机 (UVC)</text>
+  <text x="544" y="205" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#5F6368">MJPEG 解码显示</text>
+
+  <rect x="436" y="300" width="216" height="46" rx="8" fill="#EAF3DE" stroke="#3B6D11" stroke-width="0.5"/>
+  <text x="544" y="319" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#1F2933">麦克风 (UAC)</text>
+  <text x="544" y="339" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#5F6368">PCM 播放</text>
+
+  <rect x="436" y="418" width="216" height="46" rx="8" fill="#EDEBFE" stroke="#534AB7" stroke-width="0.5"/>
+  <text x="544" y="437" text-anchor="middle" font-family="system-ui,sans-serif" font-size="13" font-weight="500" fill="#1F2933">键盘 / 手柄</text>
+  <text x="544" y="457" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#5F6368">w/a/s/d/j/k → HID OUT</text>
+
+  <!-- 内部数据流箭头（板子侧） -->
+  <path d="M170 122 L170 128" stroke="#534AB7" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M104 170 L104 182" stroke="#534AB7" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M236 170 L236 182" stroke="#534AB7" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M104 220 L104 228" stroke="#185FA5" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M236 220 L236 228" stroke="#3B6D11" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M104 266 L104 274" stroke="#185FA5" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M104 312 L104 378" stroke="#185FA5" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M236 266 L169 378" stroke="#3B6D11" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- 跨 USB 的箭头（贝塞尔曲线） -->
+  <path d="M122 396 C 250 396 250 189 436 189" stroke="#185FA5" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M208 396 C 320 396 320 323 436 323" stroke="#3B6D11" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M436 441 C 320 441 320 396 292 396" stroke="#534AB7" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- USB 2.0 标签（带底衬，置于两线之间的空白区） -->
+  <rect x="303" y="289" width="74" height="22" rx="11" fill="#FFFFFF" stroke="#B8BCC2" stroke-width="0.5"/>
+  <text x="340" y="304" text-anchor="middle" font-family="system-ui,sans-serif" font-size="12" fill="#5F6368">USB 2.0</text>
+
+  <!-- 底部说明（拆两行，居中，置于外框下方） -->
+  <text x="340" y="520" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#5F6368">双 RTOS 任务：uvc_uac_task(优先级5) 轮询端点 · nes_task(优先级4) 跑 InfoNES</text>
+  <text x="340" y="538" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#5F6368">jpeg_state 单缓冲门控：编码完成 → USB 取走 → 传输完成 三态串行</text>
+</svg>
