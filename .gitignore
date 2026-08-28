@@ -6,3 +6,15 @@ build.log
 .vs/
 *.swp
 .DS_Store
+
+# ROM 管理脚本的本地清单（设备侧状态，不入库）
+rom_manifest.json
+tools/_tmp_write.*
+
+# 游戏 ROM 二进制（版权文件，不入库；自行放入 tools/roms/ 后生成合并镜像）
+tools/roms/
+
+# Python 缓存
+tools/__pycache__/
+__pycache__/
+*.pyc

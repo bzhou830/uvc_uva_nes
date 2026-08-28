@@ -23,6 +23,8 @@
 void nes_bridge_init(void);
 void nes_bridge_run(void);                  /* runs the InfoNES loop forever */
 int  nes_bridge_running(void);             /* 1 once the ROM loaded OK */
+int  nes_bridge_menu_active(void);         /* 1 while the power-up launcher menu is shown */
+void nes_bridge_push_menu_frame(void);    /* encode current menu frame to MJPEG */
 int  nes_bridge_get_video(const uint8_t **out, uint32_t *len);
 uint32_t nes_bridge_get_audio(uint8_t *buf, uint32_t bytes);
 void nes_bridge_set_pad(uint32_t pad);

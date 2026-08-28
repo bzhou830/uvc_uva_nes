@@ -440,7 +440,7 @@ NES 没跑时，`audio_source_fill()`（`frame_audio_source.c:113`）改发 1 kH
 | 分区 | 偏移 | 内容 | 烧录 |
 | --- | --- | --- | --- |
 | 固件 | `0x000000` | UVC+UAC+NES 模拟器（不含 ROM） | `flash_prog_cfg_com6.ini` |
-| ROM | `0x100000` | 一个原始 `.nes` 镜像 | `tools/flash_rom.py` |
+| ROM | `0x100000` | ROM 分区：目录区(4KB) + 数据区（多 `.nes`，见 §14） | `tools/flash_rom.py` |
 
 启动 `nes_bridge_init()`（`infones_port.c:151`）用 `bflb_flash_read()` 把 ROM 分区整段读进 PSRAM 的 `g_nes_rom[]`（`infones_port.c:50`，2 MB），`InfoNES_ReadRom`（`infones_port.c:237`）解析 iNES 头、把 `ROM`/`VROM` 指针指向它。**换游戏只烧 ROM 分区，无需重编固件**。
 
@@ -604,10 +604,12 @@ D:/bouffalo_sdk/tools/bflb_tools/bouffalo_flash_cube/BLFlashCommand.exe \
 **固件只烧一次**；之后换游戏只烧 ROM：
 
 ```bash
-python tools/flash_rom.py C:/path/to/game.nes --port COM6   # 写 0x100000，不动 0x0 固件
+python tools/flash_rom.py add C:/path/to/game.nes --port COM6   # 写目录区+数据，不动 0x0 固件
 ```
 
 烧完**松开 BOOT、按 RESET（或重插 USB）**进正常模式。串口应见 `[NES] Main start`。
+
+> **一次性分发**：把固件 + 全部已 `add` 的游戏拼成单个镜像一条命令烧完，见主 README §6.5（`tools/make_merged_firmware.py` + `flash_prog_cfg_merged.ini`）。
 
 ### 12.2 测试
 
@@ -663,3 +665,66 @@ python tools/flash_rom.py C:/path/to/game.nes --port COM6   # 写 0x100000，不
 - 只改工程 app 代码（`main.c` / `usb_composite.c` / `frame_audio_source.c` / `nes/`），**不碰 SDK**（CherryUSB 类驱动、链接脚本保持原样）。
 - 大缓冲进 PSRAM（`.psram_noinit` + `NES_PSRAM_BSS`），并在 `nes_bridge_init()` 显式 `memset` 清零。
 - 性能优化走增量：一次一个瓶颈（②+① → ③），每步编译+烧录+串口 `enc fps=` 对比，先用数据定位再动手。
+
+---
+
+## 14. 上电游戏选择菜单（Launcher）
+
+固件上电**不再自动跑固定 ROM**，而是先在 UVC 视频流上画出游戏列表，用 HID
+（方向键 + A/Start）选游戏，选中后从对应 Flash 槽加载并运行。游戏退出/出错
+会回到菜单。
+
+### 14.1 工作原理
+
+- `nes_bridge_run()`（`nes/infones_port.c`）上电进入菜单循环：扫描 ROM 分区的
+  **目录区**（方案 C，类文件系统最小实现），把每个有效目录项（其数据偏移处
+  `NES\x1a` 头校验通过）列成菜单，用 `nes_menu_render()` 画到 256×240 RGB565
+  缓冲，再由 `nes_bridge_push_menu_frame()` 走和 NES 帧**同一条**
+  `hw_mjpeg_encode → jpeg_buf/jpeg_state → UVC` 通道播出。
+- **ROM 分区布局**（`NES_ROM_FLASH_OFFSET = 0x100000`）：
+  - `[0x100000]` 目录区 4KB：每条目 44B = 游戏名(32B UTF-8) + 偏移(4B) +
+    长度(4B) + 标志(1B) + pad(3B)，最多 `ROM_DIR_MAX_ENTRIES=64` 条。
+  - `[0x101000]` 数据区：各 ROM 顺次存放、4KB 对齐。名字来自烧录时
+    `flash_rom.py` 用的文件名，随 ROM 一起存进目录区 —— **即文件名=游戏名**，
+    没有硬编码槽表，烧错位置也不会错配名字。
+- **菜单帧缓冲复用 `g_nes_rom` 前 120KB**（菜单态 ROM 区空闲），零额外内存。
+- 中文显示靠构建期生成的点阵字体：`tools/gen_menu_font.py` 用主机
+  `PIL + simhei.ttf` 把菜单用到的字渲染成 16×16 单色点阵，写入
+  `nes/nes_menu_font.h` 编进固件（约 1.8KB，含 57 字形）。
+- HID 导航复用现有位掩码（见 §11）：`Up=b4 / Down=b5 / A=b0 / Start=b3`。
+  `nes_bridge_run` 做**边沿触发滚动 + 按住 400ms 自动重复**，选中（A 或 Start
+  边沿）调用 `launch_and_run(目录项偏移)` 加载运行。PC 端 `nes_pad_sender.py` /
+  `nes_pad_webhid.html` **无需改动**。
+
+### 14.2 烧录 / 管理游戏（类文件系统）
+
+`tools/flash_rom.py` 把 `.nes` 当作"文件"管理，PC 端用 `rom_manifest.json`
+记录已烧录项（已加入 `.gitignore`）。游戏名默认取文件名（去 `.nes`），
+可用 `--name` 覆盖。固件只烧一次（含菜单）；之后增删游戏**不重编固件**：
+
+```bash
+# 追加（名字默认取文件名；可用 --name 指定）
+python tools/flash_rom.py add 超级玛丽.nes --port COM6
+python tools/flash_rom.py add 双截龙.nes   --port COM6
+python tools/flash_rom.py add 魂斗罗.nes   --port COM6
+# 列出当前已烧录
+python tools/flash_rom.py list
+# 删除（只改目录区，数据留作碎片）
+python tools/flash_rom.py remove 双截龙 --port COM6
+# 清空目录区（菜单显示"未找到游戏"）
+python tools/flash_rom.py reset --port COM6
+```
+
+每次 `add`/`remove` 都会重写目录区（4KB，写 `0x100000`，`erase=1`），
+新 ROM 数据写到计算出的 4KB 对齐偏移（`erase=1`）。烧前板子须进下载模式（§12.1）。
+烧完正常模式上电，UVC 画面即出现中文游戏列表（方向键移动、A/Start 开始）。
+
+### 14.3 增删游戏 / 改显示名
+
+- **加游戏**：`add` 即可，名字自动取自文件名；新字若未在点阵字体里，菜单会显示
+  缺字方框 —— 把字补进 `tools/gen_menu_font.py` 的 `STRINGS`，重跑
+  `python tools/gen_menu_font.py` 重新生成字体，再 `make` 烧固件。
+- **改显示名**：`add` 时加 `--name 新名`（同名会覆盖旧项）。
+- 目录项上限 `ROM_DIR_MAX_ENTRIES=64`；数据区约 7MB（8MB Flash 减去固件与
+  4KB 目录），单 ROM 上限 `NES_ROM_MAX_SIZE=2MB`。
+

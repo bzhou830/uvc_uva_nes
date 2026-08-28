@@ -19,7 +19,15 @@ import os
 # that overflowed BL616's 415 KB SRAM. To support other ROMs later, add their mapper
 # numbers here AND verify the SRAM budget (mapper static RAM currently lives in SRAM,
 # not PSRAM) -- each mapper can add several KB.
-MAPPERS = [0, 2]
+# Current set supports:
+#   0 (NROM: 超级玛丽/坦克大战/炸弹人/马戏团/2048)
+#   1 (MMC1)
+#   2 (UNROM: 魂斗罗 Contra)
+#   3 (CNROM: 公路追逐赛)
+#   4 (MMC3: 双截龙 Double Dragon / 超级玛丽3 等大量游戏)
+# Mapper 3/4 are small-state mappers (no large WRAM/CHR-RAM buffer), safe for
+# BL616 SRAM budget. If a game needs another mapper, add it here and rebuild.
+MAPPERS = [0, 1, 2, 3, 4]
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "nes", "infones_core", "InfoNES_Mapper.c")
 

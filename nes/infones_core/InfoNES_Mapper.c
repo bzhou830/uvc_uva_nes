@@ -27,7 +27,10 @@ BYTE DRAM[ DRAM_SIZE ] NES_PSRAM_BSS;
 struct MapperTable_tag MapperTable[] =
 {
   {   0, Map0_Init },
+  {   1, Map1_Init },
   {   2, Map2_Init },
+  {   3, Map3_Init },
+  {   4, Map4_Init },
   { -1, NULL }
 };
 
@@ -36,6 +39,9 @@ struct MapperTable_tag MapperTable[] =
 /*-------------------------------------------------------------------*/
 
 #include "mapper/InfoNES_Mapper_000.c"
+#include "mapper/InfoNES_Mapper_001.c"
 #include "mapper/InfoNES_Mapper_002.c"
+#include "mapper/InfoNES_Mapper_003.c"
+#include "mapper/InfoNES_Mapper_004.c"
 
 /* End of InfoNES_Mapper.c */

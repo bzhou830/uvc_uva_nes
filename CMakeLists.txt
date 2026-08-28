@@ -16,6 +16,7 @@ target_sources(app PRIVATE
     ./usb_composite.c
     ./frame_audio_source.c
     ./nes/infones_port.c
+    ./nes/nes_menu.c            # power-up game launcher menu (renders to RGB565)
     ./nes/soft_mjpeg.c          # Phase-1 test-pattern encoder (no ROM present)
     ./nes/hw_mjpeg.c            # BL616 hardware MJPEG encoder (NES frames)
     ./nes/jpeg_head.c           # JPEG header builder for the HW encoder
@@ -37,6 +38,7 @@ set_source_files_properties(
     ./nes/infones_core/InfoNES_pAPU.c
     ./nes/infones_port.c
     ./nes/hw_mjpeg.c
+    ./nes/nes_menu.c
     ./frame_audio_source.c
     PROPERTIES COMPILE_FLAGS "-O2"
 )

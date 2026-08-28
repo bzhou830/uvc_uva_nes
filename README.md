@@ -90,6 +90,7 @@ uvc_uac_nes/
 ├── flash_prog_cfg.ini      # 默认烧录配置
 ├── flash_prog_cfg_com6.ini # 固件烧录配置（COM6，写 flash 0x0）
 ├── flash_prog_cfg_rom.ini  # ROM 分区烧录配置（写 flash 0x100000，不擦固件）
+├── flash_prog_cfg_merged.ini # 合并固件烧录配置（固件+全部 ROM 单文件，写 flash 0x0）
 ├── CMakeLists.txt          # InfoNES 各源文件 + 热点 -O2
 ├── nes/
 │   ├── hw_mjpeg.c/.h       # BL616 硬件 MJPEG 编码器封装（RGB565→YUYV→HW encode）
@@ -100,6 +101,7 @@ uvc_uac_nes/
 │   └── infones_core/       # InfoNES 核心（InfoNES.c / K6502.c / InfoNES_Mapper.c / InfoNES_pAPU.c / 调色板）
 └── tools/
     ├── flash_rom.py        # 把 .nes 烧到 ROM 分区（换游戏只烧这一步，免重编固件）
+    ├── make_merged_firmware.py # 把"固件+全部已烧 ROM"拼成单个可单刷镜像（见 §6.5）
     ├── gen_mapper.py       # 生成 InfoNES_Mapper.c（MAPPERS 控制编进哪些 mapper）
     ├── make_demo_rom.py    # 生成纯色 demo ROM（调色板 smoke-test 用）
     ├── nes2c.py            # [废弃] 旧流程 .nes → nes_rom.c（现 ROM 走 Flash 分区，不再需要）
@@ -253,6 +255,19 @@ set_source_files_properties(
 
 验证方法：编译后查 `build/CMakeFiles/app.dir/build.make` 中上述 `.c.obj` 的编译命令行含 `-O2`；`flags.make` 其余文件仍为 `-Os`。详见 §10 性能记录。
 
+### 5.4 菜单中文字体（按需重生成）
+
+上电游戏列表的中文名靠 `nes/nes_menu_font.h`——它在**构建期**由 `tools/gen_menu_font.py` 用主机 simhei 字体把菜单用到的汉字渲染成 16×16 点阵（只含"实际会用到的字"，约 2 KB，已随工程提交，普通 `make` 不需要重跑）。
+
+**何时必须重跑：**
+```bash
+python tools/gen_menu_font.py        # 重新生成 nes/nes_menu_font.h
+make                                 # 再编译
+```
+- 新增/改名游戏，且游戏名里出现 `nes_menu_font.h` 没有的汉字（否则该字在菜单上显示空白）。
+- 生成器已内置 `scan_rom_names()`：自动扫描 `tools/roms/*.nes` 文件名收字，所以**只要游戏放在 `tools/roms/` 下，名字里的汉字就不会漏**。手动加字也可编辑 `gen_menu_font.py` 顶部的 `STRINGS`。
+- 依赖 `Pillow`（`pip install pillow`）与系统中文字体（`C:/Windows/Fonts/simhei.ttf` 等）。
+
 ---
 
 ## 6. 烧录
@@ -300,6 +315,34 @@ D:/bouffalo_sdk/tools/bflb_tools/bouffalo_flash_cube/BLFlashCommand.exe \
 [NES] Load ret=0
 [NES] Main start
 ```
+
+### 6.5 合并固件：一键烧完固件 + 全部游戏（推荐分发用）
+
+默认流程要分两步：先烧固件（§6.3），再逐个 `flash_rom.py add` 把游戏写进 ROM 分区（§11）。要"发一版给别人直接刷"或一次性恢复出厂，用**合并固件**更省事——它把固件、目录区、各 ROM 数据拼成**单个镜像**，一次写完。
+
+**先准备（只需做一次）：**
+```bash
+cd D:/bouffalo_sdk/examples/cherryusb/uvc_uac_nes
+make                                  # 1) 编译出固件 build/build_out/cherryusb_bl616.bin
+# 2) 把游戏加进 ROM 管理（名字=文件名，写入 rom_manifest.json 并烧到本地目录区）
+python tools/flash_rom.py add tools/roms/2048.nes
+python tools/flash_rom.py add tools/roms/坦克大战.nes
+#    ...（其余游戏同理，见 §11）
+# 3) 拼合并镜像
+python tools/make_merged_firmware.py
+#    -> build/build_out/cherryusb_bl616_merged.bin
+```
+
+> 合并镜像的 ROM 内容来自 `rom_manifest.json` + `tools/roms/*.nes`。要换游戏集，改完 `flash_rom.py add/remove` 重跑 `make_merged_firmware.py` 即可重新生成。
+
+**烧录（板子进下载模式，见 §6.2）：**
+```bash
+D:/bouffalo_sdk/tools/bflb_tools/bouffalo_flash_cube/BLFlashCommand.exe \
+  --port COM6 --config flash_prog_cfg_merged.ini --chipname bl616 write_flash_files
+```
+该配置 `erase=1` 从 `0x0` 一次擦写固件 + 目录区 + 全部 ROM 数据，`Verification succeeded` 即完成。
+
+> 合并镜像与"分步烧"结果完全等价；区别只是前者一次写完。日常**换单个游戏**仍推荐 §11 的 `flash_rom.py add`（不用重烧固件、不用重拼镜像）。
 
 ---
 
@@ -410,43 +453,45 @@ D:/bouffalo_sdk/tools/bflb_tools/bouffalo_flash_cube/BLFlashCommand.exe \
 
 ## 11. 换游戏 ROM（只烧 ROM 分区，免重编固件）
 
-固件与游戏 ROM 是**两个独立 Flash 分区**：
+ROM 走**目录区 + 数据区**的轻量"类文件系统"，与固件是**两个独立 Flash 分区**：
 
 | 分区 | 偏移 | 内容 | 烧录方式 |
 | --- | --- | --- | --- |
 | 固件 | `0x000000` | UVC+UAC+NES 模拟器（不含任何 ROM） | `flash_prog_cfg_com6.ini` / 见 §6.3 |
-| ROM  | `0x100000` | 一个原始 `.nes` 镜像（即烧即读） | `tools/flash_rom.py` / 见下 |
+| ROM  | `0x100000` | 目录区(4KB) + 多个 `.nes`（类文件系统，文件名=游戏名） | `tools/flash_rom.py` / 见下；或 §6.5 合并镜像一次写完 |
 
-启动时 `nes_bridge_init()` 用 `bflb_flash_read()` 把 ROM 分区整段读进 PSRAM 缓冲 `g_nes_rom[]`，`InfoNES_ReadRom` 直接解析，**无需重编固件**。ROM 缓冲上限 `NES_ROM_MAX_SIZE = 2 MB`；超 2 MB 会截断并串口告警。
+目录区每条 44 字节（名字 32B UTF-8 + 偏移 4B + 长度 4B + 标志 1B + pad 3B），最多 64 条；数据区从 `0x101000` 起、各 ROM 4KB 对齐顺次存放。启动时 `build_menu()` 扫描目录区、校验 `NES\x1a` 表头，把有效项建成中文游戏列表（名字即文件名）；选中后 `load_rom_from_flash_at(offset)` 直接 `bflb_flash_read()` 读绝对偏移，**无需重编固件**。ROM 缓冲上限 `NES_ROM_MAX_SIZE = 2 MB`；单 ROM 超 2 MB 会截断并串口告警。
 
-换游戏步骤：
+换游戏（或加游戏）步骤：
 
-1. 准备 `.nes` 文件（NROM/mapper0 最省事，如早期 SMB）。
-2. 解析 iNES 头确认 mapper 号（**mapper 决定固件需编进对应 Mapper，不只是换 ROM**）：
+1. 准备 `.nes` 文件。解析 iNES 头确认 mapper 号（**mapper 决定固件需编进对应 Mapper，不只是换 ROM**）：
    ```bash
-   python -c "import sys;d=open('game.nes','rb').read(16);print('PRG',d[4],'CHR',d[5],'mapper',(d[6]>>4)|(d[7]&0x0f))"
+   python -c "import sys;d=open('game.nes','rb').read(16);print('PRG',d[4],'CHR',d[5],'mapper',(d[6]>>4)|(d[7]&0xf0))"
    ```
-3. 若 mapper > 0 且当前固件未包含该 mapper（当前 `MAPPERS=[0,2]`：NROM + UxROM；魂斗罗等 mapper2 游戏已支持，无需重编）：
-   - 编辑 `tools/gen_mapper.py` 的 `MAPPERS` 加上对应编号（每加一个 mapper 可能引入数 KB~256 KB SRAM 静态量，需确认 SRAM 余量）；
-   - 重跑生成 `InfoNES_Mapper.c` → **重新编译并烧固件**（§6.3）。
+2. 若 mapper 不在当前固件支持集合，需先扩展并重编固件：
+   - 当前 `tools/gen_mapper.py` 的 `MAPPERS = [0,1,2,3,4]`（NROM / MMC1 / UxROM / 公路追逐赛 / MMC3），已覆盖多数早期游戏；魂斗罗(mapper2)、双截龙(mapper4)、公路追逐赛(mapper3) 等都在内。
+   - 若要加新 mapper：编辑 `MAPPERS` 加入编号（每加一个 mapper 会引入静态量，留意 `ram_psram` 余量）→ 重跑 `python tools/gen_mapper.py` 生成 `InfoNES_Mapper.c` → **重新编译并烧固件**（§6.3 或 §6.5）。
    - 若 mapper 已在固件内，跳到下一步。
-4. 只烧 ROM 分区（板子进下载模式，见 §6.2）：
+3. 把游戏写进 ROM 分区（板子进下载模式，见 §6.2）：
    ```bash
-   # 方式 A：脚本（推荐，自动校验 NES 头、生成临时配置）
-   python tools/flash_rom.py C:/path/to/game.nes --port COM6
-   # 方式 B：手动 ini
-   #   改 flash_prog_cfg_rom.ini 的 filedir = 你的 game.nes 绝对路径
-   #   然后：BLFlashCommand.exe --port COM6 --config flash_prog_cfg_rom.ini --chipname bl616 write_flash_files
+   # 追加一个游戏（名字默认取文件名去 .nes，可用 --name 覆盖）
+   python tools/flash_rom.py add tools/roms/game.nes --port COM6
+   # 删除 / 列出 / 清空
+   python tools/flash_rom.py remove <游戏名>
+   python tools/flash_rom.py list
+   python tools/flash_rom.py reset
    ```
-   > 该步骤 `erase=1` **仅擦 ROM 区 0x100000 起的扇区，不会动 0x0 的固件**。固件只需烧一次，之后换游戏只跑这一步。
-5. 松开 BOOT、按 RESET 启动，新游戏直接生效。串口应有：
+   `add` 会：① 校验 NES 头、自动截断尾部位填充（如双截龙 786KB 截断到头声明的 262KB）；② 重写目录区；③ 写 ROM 数据到其偏移。`erase=1` **仅擦 ROM 区 0x100000 起的扇区，不会动 0x0 的固件**。
+4. 松开 BOOT、按 RESET 启动，菜单即出现该游戏。串口应有：
    ```
-   [NES] ROM loaded from flash @0x100000, len=<N> (PRG=.. CHR=.. trainer=..)
+   [NES] ROM loaded from flash @0x<offset>, len=<N> (PRG=.. CHR=.. trainer=..)
    [NES] Load ret=0
    [NES] Main start
    ```
 
-无 ROM / ROM 损坏时：串口打印 `[NES] no valid ROM in flash @0x100000 (expected 'NES\x1a')`，NES 空闲、UVC 走彩条测试图案（不黑屏），用本节的 ROM 烧录步骤烧一个即可。
+> **一次性恢复 / 分发**见 §6.5 合并固件：把固件 + 全部已 `add` 的游戏拼成单文件，一条命令烧完。
+
+无 ROM / 目录区为空时：菜单显示「未找到游戏 请先烧录ROM」，UVC 走彩条测试图案（不黑屏），用本节步骤 `add` 一个游戏即可。
 
 > 内置 demo（`tools/make_demo_rom.py` 生成）是整屏纯色，用于 smoke-test（全红代表 PPU→MJPEG→UVC 链路已通），不是真实游戏。
 

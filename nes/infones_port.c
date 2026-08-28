@@ -26,6 +26,7 @@
 #include "infones_core/InfoNES_pAPU.h"
 
 #include "infones_port.h"
+#include "nes_menu.h"               /* 上电游戏选择菜单渲染 */
 #include "uvc_uac.h"
 #include "nes/hw_mjpeg.h"          /* BL616 hardware MJPEG encoder */
 
@@ -60,22 +61,23 @@ static uint32_t g_gn = 0;
 static uint8_t  g_nes_rom[NES_ROM_MAX_SIZE] NES_PSRAM_BSS;
 static uint32_t g_nes_rom_len = 0;
 
-/* Read the ROM image from the dedicated flash partition into g_nes_rom.
+/* Read the ROM image from a given flash offset into g_nes_rom.
+ * Used by the launcher to load whichever slot the user selected.
  * Returns 0 on success, -1 if no valid NES image is present at the offset.
  * We chunk through a small SRAM temp buffer so we never ask the flash
  * controller to DMA straight into PSRAM; g_nes_rom is plain CPU-written
  * PSRAM, which is always safe. */
-static int load_rom_from_flash(void)
+static int load_rom_from_flash_at(uint32_t offset)
 {
     uint8_t hdr[16];
     g_nes_rom_len = 0;
 
-    bflb_flash_read(NES_ROM_FLASH_OFFSET, hdr, sizeof(hdr));
+    bflb_flash_read(offset, hdr, sizeof(hdr));
     if (memcmp(hdr, "NES\x1a", 4) != 0) {
         LOG_I("[NES] no valid ROM in flash @0x%lx (expected 'NES\\x1a')\r\n",
-              (unsigned long)NES_ROM_FLASH_OFFSET);
-        LOG_I("[NES] flash a .nes to 0x%lx via tools/flash_rom.py\r\n",
-              (unsigned long)NES_ROM_FLASH_OFFSET);
+              (unsigned long)offset);
+        LOG_I("[NES] flash a .nes to 0x%lx via tools/flash_rom.py --slot N\r\n",
+              (unsigned long)offset);
         return -1;
     }
 
@@ -92,12 +94,12 @@ static int load_rom_from_flash(void)
     uint8_t tmp[256];
     for (uint32_t off = 0; off < total; off += sizeof(tmp)) {
         uint32_t chunk = (total - off < sizeof(tmp)) ? (total - off) : sizeof(tmp);
-        bflb_flash_read(NES_ROM_FLASH_OFFSET + off, tmp, chunk);
+        bflb_flash_read(offset + off, tmp, chunk);
         memcpy(g_nes_rom + off, tmp, chunk);
     }
     g_nes_rom_len = total;
     LOG_I("[NES] ROM loaded from flash @0x%lx, len=%lu (PRG=%lu CHR=%lu trainer=%lu)\r\n",
-          (unsigned long)NES_ROM_FLASH_OFFSET, (unsigned long)total,
+          (unsigned long)offset, (unsigned long)total,
           (unsigned long)prg, (unsigned long)chr, (unsigned long)trainer);
     return 0;
 }
@@ -167,8 +169,7 @@ void nes_bridge_init(void)
     hw_mjpeg_init(256, 240, SOFT_MJPEG_QUALITY);
 #endif
 
-    LOG_I("[NES] init: load ROM from flash\r\n");
-    load_rom_from_flash();
+    LOG_I("[NES] init: no auto-load; power-up shows game launcher menu\r\n");
 
     LOG_I("[NES] init: PSRAM memset start\r\n");
     /* Explicitly zero the PSRAM-resident emulator buffers. The .psram_bss
@@ -428,18 +429,194 @@ void InfoNES_MessageBox(char *pszMsg, ...)
 }
 
 /* ================================================================== *
+ *  Game launcher menu (shown on power-up over UVC; HID selects a ROM)
+ * ================================================================== */
+
+/* ROM 槽布局: 每槽 1MB, 从 0x100000 起。7 槽正好占满 8MB Flash。 */
+#define NES_ROM_SLOT_BASE  0x00100000UL
+#define NES_ROM_SLOT_SIZE  0x00100000UL
+#define NES_MENU_MAX       16
+
+/* 菜单帧缓冲: 复用 g_nes_rom 的前 256*240*2 = 120KB（菜单态 ROM 区空闲）。 */
+#define MENU_FB_W  256
+#define MENU_FB_H  240
+static uint16_t *menu_fb(void) { return (uint16_t *)g_nes_rom; }
+
+/* NES 手柄位（与 HID 上报字节一致）。 */
+#define PAD_A     (1u << 0)
+#define PAD_B     (1u << 1)
+#define PAD_SEL   (1u << 2)
+#define PAD_START (1u << 3)
+#define PAD_UP    (1u << 4)
+#define PAD_DOWN  (1u << 5)
+#define PAD_LEFT  (1u << 6)
+#define PAD_RIGHT (1u << 7)
+
+static int g_menu_active = 0;
+static nes_menu_item_t g_menu[NES_MENU_MAX];
+static int g_menu_count = 0;
+
+/* ---- ROM 目录区（类文件系统的最小实现，方案 C）----
+ * Flash ROM 分区布局（基址 NES_ROM_FLASH_OFFSET = 0x100000）：
+ *   [0x100000] 目录区 ROM_DIR_SECTOR(4KB)：ROM_DIR_MAX_ENTRIES 条目录项
+ *   [0x101000] 数据区：各 ROM 顺次存放，4KB 对齐
+ * 每条目录项记录：游戏名(UTF-8) + 数据偏移 + 长度 + 标志。
+ * 名字来自烧录时 flash_rom.py 用的文件名；固件启动时扫描目录建菜单。 */
+#define ROM_DIR_SECTOR      0x1000U
+#define ROM_DIR_OFFSET      NES_ROM_FLASH_OFFSET
+#define ROM_DATA_OFFSET     (NES_ROM_FLASH_OFFSET + ROM_DIR_SECTOR)
+#define ROM_DIR_MAX_ENTRIES 64
+#define ROM_NAME_LEN        32
+
+typedef struct __attribute__((packed)) {
+    char     name[ROM_NAME_LEN];   /* UTF-8，NUL 结尾 */
+    uint32_t offset;               /* ROM 数据绝对 Flash 偏移 */
+    uint32_t length;               /* ROM 字节长度 */
+    uint8_t  flags;                /* 0=空闲 1=有效 2=已删 */
+    uint8_t  _pad[3];
+} rom_dir_entry_t;                 /* 44 字节/项，64 项 = 2816 < 4096 */
+
+static uint8_t g_rom_dir[ROM_DIR_SECTOR];   /* SRAM 缓冲，存目录区副本 */
+
+/* 读目录区、校验每个有效项的数据偏移处有 'NES\x1a'，填充 g_menu。 */
+static void build_menu(void)
+{
+    bflb_flash_read(ROM_DIR_OFFSET, g_rom_dir, ROM_DIR_SECTOR);
+    g_menu_count = 0;
+    const rom_dir_entry_t *e = (const rom_dir_entry_t *)g_rom_dir;
+    for (int i = 0; i < ROM_DIR_MAX_ENTRIES; i++, e++) {
+        if (e->flags != 1) continue;                 /* 空闲/已删 */
+        if (e->name[0] == '\0') continue;
+        if (g_menu_count >= NES_MENU_MAX) break;
+        uint8_t hdr[4];
+        bflb_flash_read(e->offset, hdr, 4);
+        if (memcmp(hdr, "NES\x1a", 4) != 0) continue;   /* 数据错位/损坏 */
+        g_menu[g_menu_count].name   = e->name;
+        g_menu[g_menu_count].offset = e->offset;
+        g_menu_count++;
+    }
+    LOG_I("[NES] menu: %d ROM(s) found in directory\r\n", g_menu_count);
+}
+
+/* 复位模拟器相关 PSRAM 缓冲（菜单->游戏、游戏->菜单切换时都要清）。 */
+static void nes_bridge_reset_emu_buffers(void)
+{
+    memset(WorkFrame,      0, sizeof(WorkFrame));
+    memset(ChrBuf,         0, 256 * 2 * 8 * 8);
+    memset(PPURAM,         0, PPURAM_SIZE);
+    memset(SRAM,           0, SRAM_SIZE);
+    memset(RAM,            0, RAM_SIZE);
+    memset(wave_buffers,   0, sizeof(wave_buffers));
+    memset(ApuEventQueue,  0, sizeof(ApuEventQueue));
+    memset(nes_audio_ring, 0, sizeof(nes_audio_ring));
+    memset(jpeg_buf,       0, sizeof(jpeg_buf));
+    jpeg_len = 0;
+    jpeg_state = 0;
+    audio_wr = audio_rd = 0;
+    pad_state = 0;
+}
+
+/* 把当前菜单帧编码成 MJPEG（与 NES 帧同一通道 jpeg_buf/jpeg_state）。 */
+void nes_bridge_push_menu_frame(void)
+{
+    if (jpeg_state != 0) return;   /* USB 还没取走上帧 */
+    uint32_t n = hw_mjpeg_encode(menu_fb(), MENU_FB_W, MENU_FB_H,
+                                 SOFT_MJPEG_QUALITY, jpeg_buf, MJPEG_BUF_SZ);
+    if (n > 0 && n < MJPEG_BUF_SZ - 2) {
+        jpeg_len = n;
+        jpeg_state = 1;            /* 可供 UVC 抓取 */
+    }
+}
+
+int nes_bridge_menu_active(void)
+{
+    return g_menu_active;
+}
+
+/* 加载指定槽并运行；正常不返回（InfoNES_Main 循环）。失败/退出则回菜单。 */
+static void launch_and_run(uint32_t offset)
+{
+    g_menu_active = 0;
+    if (load_rom_from_flash_at(offset) != 0) {
+        LOG_I("[NES] slot @0x%lx has no valid ROM\r\n", (unsigned long)offset);
+        g_menu_active = 1;
+        return;
+    }
+    nes_bridge_reset_emu_buffers();
+    int ret = InfoNES_Load("");
+    if (ret != 0) {
+        LOG_I("[NES] Load ret=%d\r\n", ret);
+        g_menu_active = 1;
+        return;
+    }
+    g_nes_running = 1;
+    LOG_I("[NES] Main start\r\n");
+    InfoNES_Main();               /* 跑到出错/复位才返回 */
+    g_nes_running = 0;
+    LOG_I("[NES] Main returned -> back to menu\r\n");
+    g_menu_active = 1;            /* 回菜单 */
+}
+
+/* ================================================================== *
  *  Run the emulator (called from the NES task)
  * ================================================================== */
 void nes_bridge_run(void)
 {
-    LOG_I("[NES] Load start\r\n");
-    int ret = InfoNES_Load("");
-    LOG_I("[NES] Load ret=%d\r\n", ret);
-    if (ret != 0) {
-        g_nes_running = 0;
-        return;                 /* ROM failed: idle */
+    const char *title = "游戏列表";
+    const char *hint  = "↑↓ 选择   A/START 开始";
+
+    g_menu_active = 1;
+    build_menu();
+
+    int sel = 0;
+    uint32_t prev = pad_state;
+    uint32_t up_h = 0, down_h = 0;
+
+    for (;;) {
+        if (g_menu_count == 0) {
+            /* 没有烧录任何 ROM: 显示提示，不响应选择。 */
+            static const nes_menu_item_t none = { "未找到游戏 请先烧录ROM", 0 };
+            nes_menu_render(menu_fb(), MENU_FB_W, MENU_FB_H, &none, 1, 0,
+                            title, "请烧录 ROM 后重启");
+        } else {
+            nes_menu_render(menu_fb(), MENU_FB_W, MENU_FB_H,
+                            g_menu, g_menu_count, sel, title, hint);
+        }
+        nes_bridge_push_menu_frame();
+
+        /* HID 输入: 边沿触发滚动, 按住 400ms 后自动重复。 */
+        uint32_t pad  = pad_state;
+        uint32_t edge = pad & ~prev;
+        prev = pad;
+
+        if (edge & PAD_UP) {
+            if (sel > 0) sel--; up_h = 0;
+        } else if (edge & PAD_DOWN) {
+            if (sel < g_menu_count - 1) sel++; down_h = 0;
+        } else {
+            if (pad & PAD_UP) {
+                up_h += 40;
+                if (up_h >= 400) { if (sel > 0) sel--; up_h = 250; }
+            } else up_h = 0;
+            if (pad & PAD_DOWN) {
+                down_h += 40;
+                if (down_h >= 400) { if (sel < g_menu_count - 1) sel++; down_h = 250; }
+            } else down_h = 0;
+        }
+
+        if (edge & (PAD_A | PAD_START)) {
+            if (g_menu_count > 0) {
+                launch_and_run(g_menu[sel].offset);
+                /* launch_and_run 返回说明失败或游戏退出 -> 回菜单 */
+                sel = 0;
+                build_menu();
+                prev = pad_state;
+                up_h = down_h = 0;
+                vTaskDelay(pdMS_TO_TICKS(120));   /* 防连发 */
+                continue;
+            }
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(40));
     }
-    g_nes_running = 1;
-    LOG_I("[NES] Main start\r\n");
-    InfoNES_Main();            /* never returns (emulation loop) */
 }

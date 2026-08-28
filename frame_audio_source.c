@@ -60,8 +60,9 @@ static void build_test_pattern(void)
 
 int video_source_get_frame(const uint8_t **out_data, uint32_t *out_len)
 {
-    /* Phase 2: the NES emulator produces MJPEG frames. */
-    if (nes_bridge_running()) {
+    /* Phase 2: the NES emulator produces MJPEG frames. The power-up
+     * launcher menu also streams its frames through the same channel. */
+    if (nes_bridge_running() || nes_bridge_menu_active()) {
         return nes_bridge_get_video(out_data, out_len);
     }
 
@@ -120,6 +121,12 @@ void audio_source_fill(uint8_t *buf, uint32_t bytes)
          * (underflow leaves the tail as silence). */
         memset(buf, 0, bytes);
         nes_bridge_get_audio(buf, bytes);
+        return;
+    }
+
+    if (nes_bridge_menu_active()) {
+        /* Launcher menu: keep the mic silent (no 1 kHz test tone). */
+        memset(buf, 0, bytes);
         return;
     }
 
