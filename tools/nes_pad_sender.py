@@ -69,7 +69,7 @@ def build_pad(up, down, left, right, a, b, select, start):
 
 
 def list_devices():
-    import hid
+    import pyhidapi
     print("=== HID 设备列表 ===")
     for d in hid.enumerate():
         print("  %04X:%04X  %-32s  path=%s  usage=%04X:%04X" % (
@@ -112,7 +112,7 @@ def main():
         list_devices()
         return
 
-    import hid
+    import pyhidapi
     try:
         # cython-hidapi >= 1.0：构造即打开（旧 hid.device().open() 已移除）
         dev = hid.Device(vid=args.vid, pid=args.pid)
