@@ -2,31 +2,198 @@
 <html lang="zh">
 <head>
 <meta charset="utf-8">
-<title>BL616 NES Pad (WebHID)</title>
+<title>BL616 NES Pad + UVC/UAC (WebHID)</title>
 <style>
-  body { font-family: system-ui, sans-serif; margin: 2rem; }
-  button { font-size: 1rem; padding: .5rem 1rem; margin: .25rem; }
-  #log { white-space: pre-wrap; background: #111; color: #0f0; padding: 1rem; height: 160px; overflow: auto; }
-  .pad { display: grid; grid-template-columns: repeat(3, 60px); gap: 6px; margin-top: 1rem; }
-  .pad button { height: 56px; }
-  .on { background: #4caf50; color: #fff; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, "Segoe UI", sans-serif;
+    margin: 0; padding: 1.5rem;
+    background: linear-gradient(160deg, #14161c 0%, #23262e 100%);
+    color: #e8e8e8; min-height: 100vh;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+
+  h2 { margin: 0 0 .4rem; font-size: 1.25rem; letter-spacing: .5px; }
+  .sub { color: #9aa0aa; font-size: .85rem; margin-bottom: 1rem; }
+  .sub b { color: #d0d4da; }
+  kbd {
+    background: #2c3038; border: 1px solid #454a54; border-bottom-width: 2px;
+    border-radius: 4px; padding: 0 .4em; font-family: inherit; font-size: .8rem;
+  }
+
+  /* ---------- 顶部：视频 ---------- */
+  .card {
+    background: #20242c; border: 1px solid #333947; border-radius: 12px;
+    padding: 1rem; margin-bottom: 1.25rem;
+  }
+  #cam {
+    width: 100%; aspect-ratio: 4 / 3; object-fit: contain;
+    background: #000; border-radius: 8px; display: block;
+  }
+  .av-bar { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: .75rem; }
+  .av-bar select {
+    flex: 1; min-width: 160px; background: #171a20; color: #e8e8e8;
+    border: 1px solid #3a404c; border-radius: 6px; padding: .4rem .5rem; font-size: .85rem;
+  }
+  button {
+    font-size: .9rem; padding: .45rem .9rem; margin: 0;
+    background: #2c313a; color: #e8e8e8; border: 1px solid #454a54;
+    border-radius: 6px; cursor: pointer; transition: background .15s;
+  }
+  button:hover { background: #3a4150; }
+  .primary { background: #c62828; border-color: #e53935; }
+  .primary:hover { background: #d32f2f; }
+
+  /* ---------- 手柄外壳 ---------- */
+  .nes {
+    width: min(640px, 100%); margin: 0 auto; user-select: none;
+    background: linear-gradient(180deg, #e6e2d8, #cfc9bc);
+    border-radius: 14px; padding: 14px 18px 20px;
+    box-shadow: 0 10px 24px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.7);
+    position: relative;
+  }
+  .nes-head {
+    display: flex; align-items: center; gap: 10px;
+    margin: 0 6px 12px; color: #b03030; font-weight: 700;
+    font-family: "Arial Black", sans-serif; font-size: .72rem; letter-spacing: 1px;
+  }
+  .nes-head .stripes { display: flex; gap: 4px; }
+  .nes-head .stripes i { display: block; width: 6px; height: 26px; background: #c62828; border-radius: 2px; }
+  .nes-head .brand { color: #4a4640; }
+  .nes-body {
+    background: #26262a; border-radius: 10px; padding: 26px 22px;
+    display: flex; align-items: center; justify-content: space-between; gap: 18px;
+    box-shadow: inset 0 2px 8px rgba(0,0,0,.6);
+  }
+
+  /* 十字键 */
+  .dpad {
+    display: grid; grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px);
+    border-radius: 6px; overflow: visible;
+  }
+  .dpad button {
+    background: #101014; border: none; color: #6f767f; font-size: 1rem;
+    padding: 0; border-radius: 0;
+  }
+  .dpad button:hover { background: #1b1c22; }
+  .dp-up    { grid-area: 1 / 2; border-radius: 6px 6px 0 0; }
+  .dp-left  { grid-area: 2 / 1; border-radius: 6px 0 0 6px; }
+  .dp-right { grid-area: 2 / 3; border-radius: 0 6px 6px 0; }
+  .dp-down  { grid-area: 3 / 2; border-radius: 0 0 6px 6px; }
+  .dp-center {
+    grid-area: 2 / 2; background: #101014;
+    box-shadow: inset 0 0 6px rgba(0,0,0,.8);
+  }
+  .dpad .on { background: #4caf50 !important; color: #fff; }
+
+  /* Select / Start */
+  .mid { display: flex; flex-direction: column; gap: 14px; align-items: center; }
+  .mid .pair { display: flex; gap: 14px; }
+  .pillwrap { text-align: center; }
+  .pillwrap .lbl {
+    color: #9aa0aa; font-size: .6rem; letter-spacing: 1.5px; display: block; margin-bottom: 4px;
+  }
+  .pill {
+    width: 64px; height: 20px; border-radius: 10px; padding: 0;
+    background: #3a3d44; border: none; box-shadow: inset 0 -2px 4px rgba(0,0,0,.5), 0 2px 3px rgba(0,0,0,.4);
+    position: relative;
+  }
+  .pill:hover { background: #474b54; }
+  .pill.on { background: #4caf50 !important; }
+
+  /* A / B */
+  .ab { display: flex; gap: 16px; align-items: flex-end; }
+  .abwrap { text-align: center; }
+  .abwrap .lbl {
+    color: #e0b4b4; font-size: .65rem; font-weight: 700; letter-spacing: 1px;
+    display: block; margin-bottom: 4px;
+  }
+  .round {
+    width: 58px; height: 58px; border-radius: 50%; padding: 0;
+    background: radial-gradient(circle at 35% 30%, #ef6a6a, #c62828 65%, #9c1f1f);
+    border: none; color: #fff; font-weight: 700; font-size: 1.05rem;
+    box-shadow: 0 4px 8px rgba(0,0,0,.5), inset 0 2px 4px rgba(255,255,255,.35);
+  }
+  .round:hover { filter: brightness(1.1); }
+  .round.on { background: radial-gradient(circle at 35% 30%, #7fd98a, #4caf50 65%, #2e7d32) !important; }
+
+  /* ---------- 底部：连接 / 日志 ---------- */
+  .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+  #log {
+    white-space: pre-wrap; background: #101216; color: #6fe08a; padding: .75rem 1rem;
+    height: 120px; overflow: auto; border-radius: 8px; border: 1px solid #2b2f38;
+    font-family: Consolas, monospace; font-size: .78rem; margin-top: .75rem;
+  }
+  .hint { color: #9aa0aa; font-size: .78rem; margin-top: .6rem; }
 </style>
 </head>
 <body>
-<h2>BL616 NES 手柄转发 (WebHID)</h2>
-<p>用 Chrome 打开本页（需通过 http://localhost 或 https 提供安全上下文，file:// 不可用 WebHID）。
-   点“连接设备”，选 VID/PID=ABCD/1234 的 HID，然后用键盘或手柄操作。<br>
-   键盘：<b>W/A/S/D</b>=上/左/下/右，<b>J</b>=A，<b>K</b>=B，<b>空格</b>=Select，<b>Enter</b>=Start</p>
-<button id="connect">连接设备</button>
-<button id="disconnect">断开</button>
-<div id="log">日志：</div>
+<div class="wrap">
 
-<div class="pad">
-  <span></span><button data-bit="16">↑</button><span></span>
-  <button data-bit="64">←</button><span></span><button data-bit="128">→</button>
-  <span></span><button data-bit="32">↓</button><span></span>
-  <button data-bit="4">Sel</button><button data-bit="8">Sta</button><span></span>
-  <button data-bit="1">A</button><span></span><button data-bit="2">B</button>
+  <h2>BL616 NES 手柄转发 + 音视频播放</h2>
+  <p class="sub">WebHID 需要 localhost / https 环境；摄像头麦克风 <b>file:// 直接可用</b>。
+     键盘：<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 方向，
+     <kbd>J</kbd>=A <kbd>K</kbd>=B <kbd>空格</kbd>=Select <kbd>Enter</kbd>=Start</p>
+
+  <!-- 视频在最上面 -->
+  <div class="card">
+    <video id="cam" autoplay playsinline controls></video>
+    <div class="av-bar">
+      <select id="videoSel"></select>
+      <select id="audioSel"></select>
+      <button id="listMedia">刷新列表</button>
+      <button id="startAV" class="primary">打开音视频</button>
+      <button id="stopAV">关闭</button>
+      <button id="muteAV">静音</button>
+    </div>
+    <p class="hint">设备名含 “USB Video / USB Audio” 的即为本设备；首次打开需授权，授权后下拉框才会显示设备名。</p>
+  </div>
+
+  <!-- 手柄 -->
+  <div class="nes">
+    <div class="nes-head">
+      <span class="stripes"><i></i><i></i></span>
+      <span class="brand">BL616&nbsp;·&nbsp;WebHID&nbsp;PAD</span>
+    </div>
+    <div class="nes-body">
+      <div class="dpad">
+        <button data-bit="16" class="dp-up">▲</button>
+        <button data-bit="64" class="dp-left">◀</button>
+        <div class="dp-center"></div>
+        <button data-bit="128" class="dp-right">▶</button>
+        <button data-bit="32" class="dp-down">▼</button>
+      </div>
+      <div class="mid">
+        <div class="pair">
+          <div class="pillwrap"><span class="lbl">SELECT</span>
+            <button data-bit="4" class="pill" title="空格"></button></div>
+          <div class="pillwrap"><span class="lbl">START</span>
+            <button data-bit="8" class="pill" title="Enter"></button></div>
+        </div>
+        <div class="pair">
+          <div class="pillwrap"><span class="lbl">B&nbsp;(K)</span></div>
+          <div class="pillwrap"><span class="lbl">A&nbsp;(J)</span></div>
+        </div>
+      </div>
+      <div class="ab">
+        <div class="abwrap"><span class="lbl">B</span>
+          <button data-bit="2" class="round" title="K">B</button></div>
+        <div class="abwrap"><span class="lbl">A</span>
+          <button data-bit="1" class="round" title="J">A</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 连接 & 日志 -->
+  <div class="card">
+    <div class="row">
+      <button id="connect" class="primary">连接手柄 (WebHID)</button>
+      <button id="disconnect">断开</button>
+      <span class="hint" style="margin:0">VID/PID = ABCD:1234</span>
+    </div>
+    <div id="log">日志：</div>
+  </div>
+
 </div>
 
 <script>
@@ -46,7 +213,7 @@ const KEY_MAP = {w:16,W:16,a:64,A:64,s:32,S:32,d:128,D:128,
 const down = new Set();
 function setPad(bit, on) {
   down[on ? 'add' : 'delete'](bit);
-  const btn = document.querySelector(`.pad button[data-bit="${bit}"]`);
+  const btn = document.querySelector(`.nes button[data-bit="${bit}"]`);
   if (btn) btn.classList.toggle('on', on);
 }
 addEventListener('keydown', e => {
@@ -58,22 +225,23 @@ addEventListener('keyup', e => {
 });
 addEventListener('blur', () => { down.clear(); syncAllBtns(); pushPad(); }); // 切走窗口时松开所有键
 function syncAllBtns() {
-  document.querySelectorAll('.pad button').forEach(b => b.classList.toggle('on', down.has(+b.dataset.bit)));
+  document.querySelectorAll('.nes button[data-bit]').forEach(b => b.classList.toggle('on', down.has(+b.dataset.bit)));
 }
 
-// 屏幕按钮（按下/松开）
-document.querySelectorAll('.pad button').forEach(btn => {
+// 手柄上的按钮（按下/松开）
+document.querySelectorAll('.nes button[data-bit]').forEach(btn => {
   const bit = +btn.dataset.bit;
-  btn.addEventListener('pointerdown', () => { down.add(bit); btn.classList.add('on'); pushPad(); });
+  btn.addEventListener('pointerdown', e => { e.preventDefault(); down.add(bit); btn.classList.add('on'); pushPad(); });
   btn.addEventListener('pointerup',   () => { down.delete(bit); btn.classList.remove('on'); pushPad(); });
   btn.addEventListener('pointerleave',() => { down.delete(bit); btn.classList.remove('on'); pushPad(); });
+  btn.addEventListener('contextmenu', e => e.preventDefault());
 });
 
 function pushPad() {
   let p = 0; for (const b of down) p |= b; sendPad(p);
 }
 
-// 手柄（Gamepad API）
+// 外接手柄（Gamepad API）
 let lastPad = 0;
 function pollGamepad() {
   const gp = navigator.getGamepads ? navigator.getGamepads()[0] : null;
@@ -103,6 +271,65 @@ document.getElementById('connect').onclick = async () => {
 document.getElementById('disconnect').onclick = async () => {
   if (device) { await device.close(); device = null; log('已断开'); }
 };
+
+// ---------------- UVC 视频 / UAC 音频（getUserMedia） ----------------
+let avStream = null;
+const cam = document.getElementById('cam');
+
+function fillSelect(sel, devs) {
+  const cur = sel.value;
+  sel.innerHTML = '';
+  devs.forEach(d => sel.add(new Option(d.label || '(未知设备 ' + d.deviceId.slice(0, 8) + ')', d.deviceId)));
+  if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+}
+
+async function refreshMediaList() {
+  try {
+    const devs = await navigator.mediaDevices.enumerateDevices();
+    fillSelect(document.getElementById('videoSel'), devs.filter(d => d.kind === 'videoinput'));
+    fillSelect(document.getElementById('audioSel'), devs.filter(d => d.kind === 'audioinput'));
+    log('媒体设备已列出（视频 ' + document.getElementById('videoSel').options.length +
+        ' 个，音频 ' + document.getElementById('audioSel').options.length + ' 个）');
+  } catch (e) { log('枚举设备失败: ' + e); }
+}
+
+function stopAV() {
+  if (avStream) { avStream.getTracks().forEach(t => t.stop()); avStream = null; }
+  cam.srcObject = null;
+}
+
+document.getElementById('listMedia').onclick = refreshMediaList;
+
+document.getElementById('startAV').onclick = async () => {
+  try {
+    // 若下拉框为空（尚未授权），先以默认设备请求一次以触发授权
+    const vId = document.getElementById('videoSel').value;
+    const aId = document.getElementById('audioSel').value;
+    const constraints = {
+      video: vId ? { deviceId: { exact: vId } } : true,
+      audio: aId ? { deviceId: { exact: aId },
+                     echoCancellation: false, noiseSuppression: false, autoGainControl: false } : true
+    };
+    stopAV();
+    avStream = await navigator.mediaDevices.getUserMedia(constraints);
+    cam.srcObject = avStream;
+    cam.muted = false;
+    await cam.play();
+    const vt = avStream.getVideoTracks()[0], at = avStream.getAudioTracks()[0];
+    log('音视频已打开: ' + (vt ? vt.label : '无视频') + ' / ' + (at ? at.label : '无音频'));
+    refreshMediaList(); // 授权后 label 才可见，刷新一次
+  } catch (e) { log('打开音视频失败: ' + e); }
+};
+
+document.getElementById('stopAV').onclick = () => { stopAV(); log('音视频已关闭'); };
+
+document.getElementById('muteAV').onclick = () => {
+  cam.muted = !cam.muted;
+  log(cam.muted ? '已静音' : '已取消静音');
+};
+
+// 设备热插拔时刷新列表
+navigator.mediaDevices.addEventListener?.('devicechange', refreshMediaList);
 </script>
 </body>
 </html>
