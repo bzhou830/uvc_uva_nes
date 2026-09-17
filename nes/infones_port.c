@@ -435,7 +435,10 @@ void InfoNES_MessageBox(char *pszMsg, ...)
 /* ROM 槽布局: 每槽 1MB, 从 0x100000 起。7 槽正好占满 8MB Flash。 */
 #define NES_ROM_SLOT_BASE  0x00100000UL
 #define NES_ROM_SLOT_SIZE  0x00100000UL
-#define NES_MENU_MAX       16
+/* 菜单项上限。与目录区条目数 ROM_DIR_MAX_ENTRIES(64) 对齐，避免 ROM 多时
+ * 被静默截断；每项仅 sizeof(ptr)+4 = 8 字节，64 项共 512 字节 SRAM。
+ * 菜单渲染带滚动窗口，条数超出可视行数时自动滚动。 */
+#define NES_MENU_MAX       64
 
 /* 菜单帧缓冲: 复用 g_nes_rom 的前 256*240*2 = 120KB（菜单态 ROM 区空闲）。 */
 #define MENU_FB_W  256
