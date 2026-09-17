@@ -11,7 +11,7 @@
     background: linear-gradient(160deg, #14161c 0%, #23262e 100%);
     color: #e8e8e8; min-height: 100vh;
   }
-  .wrap { max-width: 860px; margin: 0 auto; }
+  .wrap { max-width: 1100px; margin: 0 auto; }
 
   h2 { margin: 0 0 .4rem; font-size: 1.25rem; letter-spacing: .5px; }
   .sub { color: #9aa0aa; font-size: .85rem; margin-bottom: 1rem; }
@@ -21,7 +21,50 @@
     border-radius: 4px; padding: 0 .4em; font-family: inherit; font-size: .8rem;
   }
 
-  /* ---------- 顶部：视频 ---------- */
+  /* ---------- 布局：左控制栏 + 右主区域 ---------- */
+  .layout { display: flex; gap: 1.25rem; align-items: flex-start; flex-wrap: wrap; }
+
+  .sidebar {
+    flex: 1 1 280px; min-width: 260px; max-width: 320px;
+    background: #20242c; border: 1px solid #333947; border-radius: 12px;
+    padding: 1rem; position: sticky; top: 1rem;
+    display: flex; flex-direction: column; gap: 1rem;
+    align-self: flex-start;
+  }
+  .main { flex: 3 1 480px; min-width: 0; }
+
+  .ctrl-group { border-top: 1px solid #2b2f38; padding-top: .85rem; }
+  .ctrl-group:first-child { border-top: none; padding-top: 0; }
+  .ctrl-group h3 {
+    margin: 0 0 .6rem; font-size: .78rem; letter-spacing: 1.5px;
+    color: #9aa0aa; text-transform: uppercase; font-weight: 700;
+  }
+  /* 控制栏内的表单元素占满宽度 */
+  .sidebar select {
+    width: 100%; margin-bottom: .5rem; background: #171a20; color: #e8e8e8;
+    border: 1px solid #3a404c; border-radius: 6px; padding: .45rem .5rem; font-size: .85rem;
+  }
+  .sidebar button {
+    width: 100%; margin-bottom: .5rem; font-size: .88rem; padding: .5rem .6rem;
+    background: #2c313a; color: #e8e8e8; border: 1px solid #454a54;
+    border-radius: 6px; cursor: pointer; transition: background .15s;
+  }
+  .sidebar button:hover { background: #3a4150; }
+  .sidebar .btn-row { display: flex; gap: .5rem; }
+  .sidebar .btn-row button { margin-bottom: .5rem; flex: 1; }
+  .primary { background: #c62828 !important; border-color: #e53935 !important; }
+  .primary:hover { background: #d32f2f !important; }
+  .sidebar .hint { color: #9aa0aa; font-size: .76rem; margin: .2rem 0 0; line-height: 1.4; }
+
+  /* 日志占据控制栏剩余高度 */
+  .log-group { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+  #log {
+    flex: 1 1 auto; white-space: pre-wrap; background: #101216; color: #6fe08a;
+    padding: .6rem .75rem; height: 130px; overflow: auto; border-radius: 8px;
+    border: 1px solid #2b2f38; font-family: Consolas, monospace; font-size: .76rem; margin-top: .4rem;
+  }
+
+  /* ---------- 右侧：视频 ---------- */
   .card {
     background: #20242c; border: 1px solid #333947; border-radius: 12px;
     padding: 1rem; margin-bottom: 1.25rem;
@@ -30,19 +73,6 @@
     width: 100%; aspect-ratio: 4 / 3; object-fit: contain;
     background: #000; border-radius: 8px; display: block;
   }
-  .av-bar { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-top: .75rem; }
-  .av-bar select {
-    flex: 1; min-width: 160px; background: #171a20; color: #e8e8e8;
-    border: 1px solid #3a404c; border-radius: 6px; padding: .4rem .5rem; font-size: .85rem;
-  }
-  button {
-    font-size: .9rem; padding: .45rem .9rem; margin: 0;
-    background: #2c313a; color: #e8e8e8; border: 1px solid #454a54;
-    border-radius: 6px; cursor: pointer; transition: background .15s;
-  }
-  button:hover { background: #3a4150; }
-  .primary { background: #c62828; border-color: #e53935; }
-  .primary:hover { background: #d32f2f; }
 
   /* ---------- 手柄外壳 ---------- */
   .nes {
@@ -116,15 +146,6 @@
   }
   .round:hover { filter: brightness(1.1); }
   .round.on { background: radial-gradient(circle at 35% 30%, #7fd98a, #4caf50 65%, #2e7d32) !important; }
-
-  /* ---------- 底部：连接 / 日志 ---------- */
-  .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
-  #log {
-    white-space: pre-wrap; background: #101216; color: #6fe08a; padding: .75rem 1rem;
-    height: 120px; overflow: auto; border-radius: 8px; border: 1px solid #2b2f38;
-    font-family: Consolas, monospace; font-size: .78rem; margin-top: .75rem;
-  }
-  .hint { color: #9aa0aa; font-size: .78rem; margin-top: .6rem; }
 </style>
 </head>
 <body>
@@ -135,63 +156,79 @@
      键盘：<kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 方向，
      <kbd>J</kbd>=A <kbd>K</kbd>=B <kbd>空格</kbd>=Select <kbd>Enter</kbd>=Start</p>
 
-  <!-- 视频在最上面 -->
-  <div class="card">
-    <video id="cam" autoplay playsinline controls></video>
-    <div class="av-bar">
-      <select id="videoSel"></select>
-      <select id="audioSel"></select>
-      <button id="listMedia">刷新列表</button>
-      <button id="startAV" class="primary">打开音视频</button>
-      <button id="stopAV">关闭</button>
-      <button id="muteAV">静音</button>
-    </div>
-    <p class="hint">设备名含 “USB Video / USB Audio” 的即为本设备；首次打开需授权，授权后下拉框才会显示设备名。</p>
-  </div>
+  <div class="layout">
 
-  <!-- 手柄 -->
-  <div class="nes">
-    <div class="nes-head">
-      <span class="stripes"><i></i><i></i></span>
-      <span class="brand">BL616&nbsp;·&nbsp;WebHID&nbsp;PAD</span>
-    </div>
-    <div class="nes-body">
-      <div class="dpad">
-        <button data-bit="16" class="dp-up">▲</button>
-        <button data-bit="64" class="dp-left">◀</button>
-        <div class="dp-center"></div>
-        <button data-bit="128" class="dp-right">▶</button>
-        <button data-bit="32" class="dp-down">▼</button>
-      </div>
-      <div class="mid">
-        <div class="pair">
-          <div class="pillwrap"><span class="lbl">SELECT</span>
-            <button data-bit="4" class="pill" title="空格"></button></div>
-          <div class="pillwrap"><span class="lbl">START</span>
-            <button data-bit="8" class="pill" title="Enter"></button></div>
+    <!-- 左侧控制栏：统一放置摄像头 / 音频 / HID 设备的打开控制 -->
+    <aside class="sidebar">
+      <div class="ctrl-group">
+        <h3>摄像头 / 音频</h3>
+        <select id="videoSel"></select>
+        <select id="audioSel"></select>
+        <div class="btn-row">
+          <button id="listMedia">刷新列表</button>
+          <button id="startAV" class="primary">打开音视频</button>
         </div>
-        <div class="pair">
-          <div class="pillwrap"><span class="lbl">B&nbsp;(K)</span></div>
-          <div class="pillwrap"><span class="lbl">A&nbsp;(J)</span></div>
+        <div class="btn-row">
+          <button id="stopAV">关闭</button>
+          <button id="muteAV">静音</button>
         </div>
+        <p class="hint">点“打开音视频”授权后，下拉框会用<b>已打开设备的真实名称</b>填充；“刷新列表”可列出全部设备（file:// 下可能仍隐藏名称）。</p>
       </div>
-      <div class="ab">
-        <div class="abwrap"><span class="lbl">B</span>
-          <button data-bit="2" class="round" title="K">B</button></div>
-        <div class="abwrap"><span class="lbl">A</span>
-          <button data-bit="1" class="round" title="J">A</button></div>
-      </div>
-    </div>
-  </div>
 
-  <!-- 连接 & 日志 -->
-  <div class="card">
-    <div class="row">
-      <button id="connect" class="primary">连接手柄 (WebHID)</button>
-      <button id="disconnect">断开</button>
-      <span class="hint" style="margin:0">VID/PID = ABCD:1234</span>
-    </div>
-    <div id="log">日志：</div>
+      <div class="ctrl-group">
+        <h3>HID 手柄</h3>
+        <button id="connect" class="primary">连接手柄 (WebHID)</button>
+        <button id="disconnect">断开</button>
+        <p class="hint" style="margin-top:.5rem">VID/PID = ABCD:1234</p>
+      </div>
+
+      <div class="ctrl-group log-group">
+        <h3>状态日志</h3>
+        <div id="log">日志：</div>
+      </div>
+    </aside>
+
+    <!-- 右侧主区域：视频画面 + 手柄 -->
+    <main class="main">
+      <div class="card">
+        <video id="cam" autoplay playsinline controls></video>
+      </div>
+
+      <div class="nes">
+        <div class="nes-head">
+          <span class="stripes"><i></i><i></i></span>
+          <span class="brand">BL616&nbsp;·&nbsp;WebHID&nbsp;PAD</span>
+        </div>
+        <div class="nes-body">
+          <div class="dpad">
+            <button data-bit="16" class="dp-up">▲</button>
+            <button data-bit="64" class="dp-left">◀</button>
+            <div class="dp-center"></div>
+            <button data-bit="128" class="dp-right">▶</button>
+            <button data-bit="32" class="dp-down">▼</button>
+          </div>
+          <div class="mid">
+            <div class="pair">
+              <div class="pillwrap"><span class="lbl">SELECT</span>
+                <button data-bit="4" class="pill" title="空格"></button></div>
+              <div class="pillwrap"><span class="lbl">START</span>
+                <button data-bit="8" class="pill" title="Enter"></button></div>
+            </div>
+            <div class="pair">
+              <div class="pillwrap"><span class="lbl">B&nbsp;(K)</span></div>
+              <div class="pillwrap"><span class="lbl">A&nbsp;(J)</span></div>
+            </div>
+          </div>
+          <div class="ab">
+            <div class="abwrap"><span class="lbl">B</span>
+              <button data-bit="2" class="round" title="K">B</button></div>
+            <div class="abwrap"><span class="lbl">A</span>
+              <button data-bit="1" class="round" title="J">A</button></div>
+          </div>
+        </div>
+      </div>
+    </main>
+
   </div>
 
 </div>
@@ -274,13 +311,34 @@ document.getElementById('disconnect').onclick = async () => {
 
 // ---------------- UVC 视频 / UAC 音频（getUserMedia） ----------------
 let avStream = null;
+let avOpened = false;   // 是否已通过授权打开过（决定是否信任枚举 label）
 const cam = document.getElementById('cam');
 
+function devName(d) {
+  // 未授权 / file:// 等隐私限制下 enumerateDevices().label 为空，给出诚实提示而非“未知设备”
+  return d.label || (d.kind === 'videoinput' ? '(摄像头 · 未授权)' : '(麦克风 · 未授权)');
+}
+
 function fillSelect(sel, devs) {
+  // 枚举结果全部无 label（file:// 或尚未授权），且已用轨道真名填过：不要覆盖真名
+  const hasRealLabel = devs.some(d => d.label);
+  if (!hasRealLabel && avOpened && sel.options.length) return;
   const cur = sel.value;
   sel.innerHTML = '';
-  devs.forEach(d => sel.add(new Option(d.label || '(未知设备 ' + d.deviceId.slice(0, 8) + ')', d.deviceId)));
+  devs.forEach(d => sel.add(new Option(devName(d), d.deviceId)));
   if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+}
+
+// 用实际打开的音视频轨道名填充下拉框：track.label 在任何环境下都可靠，不依赖 enumerateDevices
+function applyActiveTracks() {
+  if (!avStream) return;
+  const vt = avStream.getVideoTracks()[0];
+  const at = avStream.getAudioTracks()[0];
+  const vSel = document.getElementById('videoSel');
+  const aSel = document.getElementById('audioSel');
+  vSel.innerHTML = ''; aSel.innerHTML = '';
+  if (vt) vSel.add(new Option(vt.label || '(摄像头)', (vt.getSettings && vt.getSettings().deviceId) || ''));
+  if (at) aSel.add(new Option(at.label || '(麦克风)', (at.getSettings && at.getSettings().deviceId) || ''));
 }
 
 async function refreshMediaList() {
@@ -288,21 +346,21 @@ async function refreshMediaList() {
     const devs = await navigator.mediaDevices.enumerateDevices();
     fillSelect(document.getElementById('videoSel'), devs.filter(d => d.kind === 'videoinput'));
     fillSelect(document.getElementById('audioSel'), devs.filter(d => d.kind === 'audioinput'));
-    log('媒体设备已列出（视频 ' + document.getElementById('videoSel').options.length +
-        ' 个，音频 ' + document.getElementById('audioSel').options.length + ' 个）');
+    const n = devs.filter(d => d.kind === 'videoinput' || d.kind === 'audioinput').length;
+    log('媒体设备已列出（共 ' + n + ' 个' + (avOpened ? '' : ' · 未授权时名称隐藏') + '）');
   } catch (e) { log('枚举设备失败: ' + e); }
 }
 
 function stopAV() {
   if (avStream) { avStream.getTracks().forEach(t => t.stop()); avStream = null; }
   cam.srcObject = null;
+  avOpened = false;
 }
 
 document.getElementById('listMedia').onclick = refreshMediaList;
 
 document.getElementById('startAV').onclick = async () => {
   try {
-    // 若下拉框为空（尚未授权），先以默认设备请求一次以触发授权
     const vId = document.getElementById('videoSel').value;
     const aId = document.getElementById('audioSel').value;
     const constraints = {
@@ -315,13 +373,15 @@ document.getElementById('startAV').onclick = async () => {
     cam.srcObject = avStream;
     cam.muted = false;
     await cam.play();
+    avOpened = true;
     const vt = avStream.getVideoTracks()[0], at = avStream.getAudioTracks()[0];
     log('音视频已打开: ' + (vt ? vt.label : '无视频') + ' / ' + (at ? at.label : '无音频'));
-    refreshMediaList(); // 授权后 label 才可见，刷新一次
+    applyActiveTracks();   // 立刻用真实轨道名填充下拉框（不依赖 enumerateDevices 的 label）
+    refreshMediaList();    // 再尝试列出全部设备；file:// 下仍无 label 时，上面的真名会被保留
   } catch (e) { log('打开音视频失败: ' + e); }
 };
 
-document.getElementById('stopAV').onclick = () => { stopAV(); log('音视频已关闭'); };
+document.getElementById('stopAV').onclick = () => { stopAV(); log('音视频已关闭'); refreshMediaList(); };
 
 document.getElementById('muteAV').onclick = () => {
   cam.muted = !cam.muted;
@@ -330,6 +390,9 @@ document.getElementById('muteAV').onclick = () => {
 
 // 设备热插拔时刷新列表
 navigator.mediaDevices.addEventListener?.('devicechange', refreshMediaList);
+
+// 页面加载即列出设备（未授权时显示“未授权”占位，而不是空白）
+refreshMediaList();
 </script>
 </body>
 </html>

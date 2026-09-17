@@ -38,6 +38,7 @@ import json
 import struct
 import subprocess
 import argparse
+import re
 
 # ---- Flash 分区布局常量（必须与 infones_port.c 保持一致）----
 NES_ROM_FLASH_OFFSET = 0x100000
@@ -48,9 +49,21 @@ ROM_DIR_MAX_ENTRIES  = 64
 ROM_NAME_LEN         = 32
 ROM_ENTRY_SZ         = ROM_NAME_LEN + 4 + 4 + 1 + 3   # 44 字节/项
 
-# 当前固件已编译进的 mapper 集合（与 tools/gen_mapper.py 的 MAPPERS 对应）。
+# 当前固件已编译进的 mapper 集合：自动发现 nes/infones_core/mapper/ 下全部
+# InfoNES_Mapper_*.c，与 gen_mapper.py 生成的 InfoNES_Mapper.c 保持一致。
 # 烧录时据此给"固件可能跑不了"的 ROM 打告警。
-SUPPORTED_MAPPERS = {0, 1, 2, 3, 4}
+def _discover_mappers():
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    d = os.path.join(root, "nes", "infones_core", "mapper")
+    s = set()
+    if os.path.isdir(d):
+        for fn in os.listdir(d):
+            m = re.search(r"InfoNES_Mapper_(\d+)\.c$", fn)
+            if m:
+                s.add(int(m.group(1)))
+    return s
+
+SUPPORTED_MAPPERS = _discover_mappers() or {0, 1, 2, 3, 4}
 
 CHIP         = "bl616"
 DEFAULT_PORT = "COM6"

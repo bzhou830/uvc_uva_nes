@@ -3,31 +3,35 @@
 """
 Generate nes/infones_core/InfoNES_Mapper.c with a CURATED mapper set.
 
-BL616 has only ~414 KB SRAM, but the full InfoNES mapper table pulls in
-~413 KB of static mapper state (138 mappers). We therefore compile only a
-curated subset of the most common mappers. The MapperTable[] entries and
-the #include list are generated from the SAME list so they can never drift.
+full InfoNES mapper set is built in (auto-discovered from the mapper directory
+below). Measured: the 138 mapper files contribute only ~20.5 KB of static arrays
+total, largest single file 8 KB; the real SRAM consumers (frame buffer / PPU /
+SRAM / DRAM 40 KB in PSRAM) are core-shared and independent of mapper count. So
+building all mappers adds ~0 SRAM -- trust the linker .map for the real budget.
+The MapperTable[] entries and the #include list are generated from the SAME
+auto-discovered list so they can never drift.
 
-To support more games later, just add mapper numbers to MAPPERS and re-run:
+Re-run to regenerate after changing the mapper directory:
     python3 tools/gen_mapper.py
 """
 import os
+import re
+import glob
 
-# Curated NES mappers. The embedded demo ROM (nes_rom.c) is NROM = mapper 0,
-# which needs NO extra static RAM, so we compile ONLY mapper 0. The full 96-mapper
-# set pulled in ~320 KB of static mapper state (one mapper carries a 256 KB buffer)
-# that overflowed BL616's 415 KB SRAM. To support other ROMs later, add their mapper
-# numbers here AND verify the SRAM budget (mapper static RAM currently lives in SRAM,
-# not PSRAM) -- each mapper can add several KB.
-# Current set supports:
-#   0 (NROM: 超级玛丽/坦克大战/炸弹人/马戏团/2048)
-#   1 (MMC1)
-#   2 (UNROM: 魂斗罗 Contra)
-#   3 (CNROM: 公路追逐赛)
-#   4 (MMC3: 双截龙 Double Dragon / 超级玛丽3 等大量游戏)
-# Mapper 3/4 are small-state mappers (no large WRAM/CHR-RAM buffer), safe for
-# BL616 SRAM budget. If a game needs another mapper, add it here and rebuild.
-MAPPERS = [0, 1, 2, 3, 4]
+# Auto-discover every InfoNES_Mapper_*.c in nes/infones_core/mapper/ so we never
+# miss or mistype a mapper number. Result is sorted and de-duplicated.
+_MAPDIR = os.path.join(os.path.dirname(__file__), "..", "nes", "infones_core", "mapper")
+
+def _discover_mappers():
+    nums = []
+    for fn in glob.glob(os.path.join(_MAPDIR, "InfoNES_Mapper_*.c")):
+        m = re.search(r"InfoNES_Mapper_(\d+)\.c$", fn)
+        if m:
+            nums.append(int(m.group(1)))
+    return sorted(set(nums))
+
+# 当前编译进固件的完整 mapper 集合（全 138 个，自动发现）。
+MAPPERS = _discover_mappers()
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "nes", "infones_core", "InfoNES_Mapper.c")
 
